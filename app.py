@@ -24,24 +24,20 @@ def is_valid_npi(npi):
 def analyze_claim(row):
     """Analyze a single claim for potential denial risks"""
     risks = []
-    
-    # Check CPT-ICD10 match
     if not check_cpt_icd10_match(row):
         risks.append("CPT code may not support the ICD-10 diagnosis")
-    
-    # Check prior authorization
     if not check_prior_auth(row):
         risks.append("Missing required prior authorization")
-    
-    # Validate NPI
     if 'provider_npi' in row and not is_valid_npi(row['provider_npi']):
         risks.append("Invalid provider NPI")
-    
-    # Check for out-of-network (simulated)
     if 'network_status' in row and row['network_status'].lower() == 'out':
         risks.append("Out-of-network service may not be covered")
-    
+
+    print(f"Analyzing claim: {row.to_dict()}")  # DEBUG PRINT
+    print(f"Risks found: {risks}")  # DEBUG PRINT
+
     return risks
+
 
 @app.route('/upload', methods=['POST'])
 def upload_file():
