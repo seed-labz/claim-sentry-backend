@@ -41,8 +41,13 @@ def analyze_claim(row):
 
 @app.route('/upload', methods=['POST'])
 def upload_file():
-    if 'file' not in request.files:
-        return jsonify({'error': 'No file provided'}), 400
+print("Received request:", request)
+print("Request files:", request.files)
+
+if 'file' not in request.files or request.files['file'].filename == '':
+    print("No file found in request.")
+    return jsonify({'error': 'No file provided or filename missing'}), 400
+
     
     file = request.files['file']
     if file.filename == '':
