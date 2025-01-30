@@ -41,8 +41,9 @@ def analyze_claim(row):
 
 @app.route('/upload', methods=['POST'])
 def upload_file():
-print("Received request:", request)
-print("Request files:", request.files)
+    print("Received request:", request)
+    print("Request files:", request.files)
+
 
 if 'file' not in request.files or request.files['file'].filename == '':
     print("No file found in request.")
