@@ -44,10 +44,8 @@ def upload_file():
     print("Received request:", request)
     print("Request files:", request.files)
 
-
-if 'file' not in request.files or request.files['file'].filename == '':
-    print("No file found in request.")
-    return jsonify({'error': 'No file provided or filename missing'}), 400
+    if 'file' not in request.files:
+        return jsonify({'error': 'No file provided or filename missing'}), 40
 
     
     file = request.files['file']
