@@ -1,91 +1,65 @@
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 import pandas as pd
-import numpy as np
 from datetime import datetime
 
 app = Flask(__name__)
 CORS(app)
 
-def check_cpt_icd10_match(row):
-    """Simulate CPT-ICD10 compatibility check"""
-    # In a real implementation, this would check against a database of valid combinations
-    return np.random.choice([True, False], p=[0.8, 0.2])
-
-def check_prior_auth(row):
-    """Check if prior authorization is required and present"""
-    # Simulate checking if the procedure requires prior auth and if it's present
-    return np.random.choice([True, False], p=[0.9, 0.1])
-
 def is_valid_npi(npi):
-    """Basic NPI validation"""
-    return len(str(npi)) == 10 and str(npi).isdigit()
+    return str(npi).isdigit() and len(str(npi)) == 10
+
+def is_valid_cpt(cpt_code):
+    return str(cpt_code).replace("-", "").isdigit() and 4 <= len(str(cpt_code)) <= 6
+
+def is_valid_icd10(icd10_code):
+    code = str(icd10_code).upper()
+    return code[0].isalpha() and len(code) >= 3 and code[1:].replace(".", "").isalnum()
 
 def analyze_claim(row):
-    """Analyze a single claim for potential denial risks"""
     risks = []
-    if not check_cpt_icd10_match(row):
-        risks.append("CPT code may not support the ICD-10 diagnosis")
-    if not check_prior_auth(row):
-        risks.append("Missing required prior authorization")
-    if 'provider_npi' in row and not is_valid_npi(row['provider_npi']):
-        risks.append("Invalid provider NPI")
-    if 'network_status' in row and row['network_status'].lower() == 'out':
-        risks.append("Out-of-network service may not be covered")
-
-    print(f"Analyzing claim: {row.to_dict()}")  # DEBUG PRINT
-    print(f"Risks found: {risks}")  # DEBUG PRINT
-
-    return risks
-
+    if not is_valid_cpt(row['cpt_code']):
+        risks.append(f"Invalid CPT code: {row['cpt_code']}")
+    if not is_valid_icd10(row['icd10_code']):
+        risks.append(f"Invalid ICD10 code: {row['icd10_code']}")
+    if row['prior_auth_required'].lower() == 'yes' and row['prior_auth_provided'].lower() != 'yes':
+        risks.append("Missing prior authorization")
+    if not is_valid_npi(row['provider_npi']):
+        risks.append(f"Invalid NPI: {row['provider_npi']}")
+    if row['network_status'].lower() == 'out':
+        risks.append("Out-of-network service")
+    risk_level = "High" if len(risks) > 1 else "Medium" if risks else "Low"
+    return {
+        'claim_id': row['claim_id'],
+        'patient_id': row['patient_id'],
+        'service_date': row['service_date'],
+        'cpt_code': row['cpt_code'],
+        'icd10_code': row['icd10_code'],
+        'denial_risks': risks,
+        'risk_level': risk_level
+    }
 
 @app.route('/upload', methods=['POST'])
 def upload_file():
-    print("Received request:", request)
-    print("Request files:", request.files)
-
     if 'file' not in request.files:
-        return jsonify({'error': 'No file provided or filename missing'}), 40
-
-    
+        return jsonify({'error': 'No file provided'}), 400
     file = request.files['file']
-    if file.filename == '':
-        return jsonify({'error': 'No file selected'}), 400
-    
-    if not file.filename.endswith('.csv'):
-        return jsonify({'error': 'File must be a CSV'}), 400
-    
+    if file.filename == '' or not file.filename.endswith('.csv'):
+        return jsonify({'error': 'Invalid file'}), 400
     try:
-        # Read CSV file
         df = pd.read_csv(file)
-        
-        # Process each claim
-        results = []
-        for index, row in df.iterrows():
-            risks = analyze_claim(row)
-            
-            result = {
-                'claim_id': str(row.get('claim_id', f'CLAIM_{index}')),
-                'patient_id': str(row.get('patient_id', 'N/A')),
-                'service_date': str(row.get('service_date', 'N/A')),
-                'cpt_code': str(row.get('cpt_code', 'N/A')),
-                'icd10_code': str(row.get('icd10_code', 'N/A')),
-                'amount': float(row.get('amount', 0.0)),
-                'provider': str(row.get('provider_name', 'N/A')),
-                'denial_risks': risks,
-                'risk_level': 'High' if len(risks) > 1 else 'Medium' if len(risks) == 1 else 'Low'
-            }
-            results.append(result)
-        
+        required_columns = ['claim_id', 'patient_id', 'service_date', 'cpt_code', 'icd10_code', 'provider_npi', 'network_status', 'prior_auth_required', 'prior_auth_provided']
+        if not all(col in df.columns for col in required_columns):
+            return jsonify({'error': 'Missing required columns'}), 400
+        results = [analyze_claim(row) for _, row in df.iterrows()]
         return jsonify({
             'results': results,
             'total_claims': len(results),
             'high_risk_claims': sum(1 for r in results if r['risk_level'] == 'High'),
             'processed_at': datetime.now().isoformat()
         })
-    
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000)
+    app.run(host='0.0.0.0', port=5000, debug=True)  # <-- Added debug mode
